@@ -1,0 +1,6 @@
+build/*.js
+tests/*.js
+tests/generated/*
+xunit.xml
+node_modules
+.DS_Store

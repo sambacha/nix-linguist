@@ -1,0 +1,35 @@
+{
+  "name": "nix-linguist",
+  "version": "0.1.0",
+  "description": "nix language for github linguist",
+  "scripts": {
+    "test": "npx ajv validate -s syntax/test.tmlanguage.json -d syntax/nix.tmLanguage.json"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sambacha/nix-linguist.git"
+  },
+  "keywords": ["nix", "github", "linguist", "tmlanguage"],
+  "author": "sam bacha",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sambacha/nix-linguist/issues"
+  },
+  "homepage": "https://github.com/sambacha/nix-linguist#readme",
+  "devDependencies": {
+    "@types/chai": "^4.3.1",
+    "@types/js-yaml": "^4.0.5",
+    "@types/mocha": "^9.1.1",
+    "@types/node": "^16.11.41",
+    "@types/plist": "^3.0.2",
+    "ajv": "^8.11.0",
+    "ajv-cli": "^5.0.0",
+    "chai": "^4.3.6",
+    "js-yaml": "^4.1.0",
+    "mocha": "^10.0.0",
+    "plist": "^3.0.5",
+    "typescript": "^4.7.4",
+    "vscode-textmate": "^7.0.1"
+  }
+}
