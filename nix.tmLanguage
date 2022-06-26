@@ -1,610 +1,1798 @@
-# [PackageDev] target_format: plist, ext: tmLanguage
-# Made by Wout.Mertens@gmail.com
-#
-# This grammar tries to be complete, but regex-based highlighters
-# can't be full parsers. Therefore it's a bit looser than the Nix
-# parser itself and some legal constructs will be marked as illegal.
-# It seems to work fine for nixpkgs.
-#
-#
-# While reading this, bear in mind that multi-line matches are not
-# allowed and the end regex is tested before enclosed patterns regexes
-# However, you can look-ahead to an end pattern with (?=...), which allows
-# you to match everything in a block
-#
-#
-# To enforce multipart expressions, a wrapper pattern is used
-# that matches the beginning and end with look-ahead.
-# Then the parts are chained with look-aheads.
-#
-# Unfortunately this doesn't work if the end condition matches
-# the end of a part, in that case the part is fully matched
-# instead of with a look-ahead
-# and legal expressions should still match properly.
-#
-# Known issues:
-# - attrset:
-#   - if the closing brace of an empty { } block is at column 1
-#     of the line, it will terminate the expression and mark
-#     expression-cont rules as invalid
-#
-# There are no named regexes, so here's a list for copy-paste:
-# identifier: [a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-# expression terminator next: (?=([\])};,]|\b(else|then)\b))
-# match anything coming next: (?=.?)
-# match until end of file: $^
-
----
-name: Nix
-scopeName: source.nix
-fileTypes: ["nix"]
-uuid: 0514fd5f-acb6-436d-b42c-7643e6d36c8f
-
-patterns:
-  - include: "#expression"
-
-repository:
-  expression:
-    patterns:
-      - include: "#parens-and-cont"
-      - include: "#list-and-cont"
-      - include: "#string"
-      - include: "#interpolation"
-      - include: "#with-assert"
-      - include: "#function-for-sure"
-      - include: "#attrset-for-sure"
-      - include: "#attrset-or-function"
-      - include: "#let"
-      - include: "#if"
-      - include: "#operator-unary"
-      - include: "#constants"
-      - include: "#bad-reserved"
-      - include: "#parameter-name-and-cont"
-      - include: "#others"
-  expression-cont:
-    begin: (?=.?)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#parens"
-      - include: "#list"
-      - include: "#string"
-      - include: "#interpolation"
-      - include: "#function-for-sure"
-      - include: "#attrset-for-sure"
-      - include: "#attrset-or-function"
-      - name: keyword.operator.nix
-        match: (\bor\b|\.|==|!=|!|\<\=|\<|\>\=|\>|&&|\|\||-\>|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)
-      - include: "#constants"
-      - include: "#bad-reserved"
-      - include: "#parameter-name"
-      - include: "#others"
-
-  parens:
-    begin: \(
-    beginCaptures:
-      "0": { name: punctuation.definition.expression.nix }
-    end: \)
-    endCaptures:
-      "0": { name: punctuation.definition.expression.nix }
-    patterns:
-      - include: "#expression"
-  parens-and-cont:
-    begin: (?=\()
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#parens"
-      - include: "#expression-cont"
-
-  list:
-    begin: \[
-    beginCaptures:
-      "0": { name: punctuation.definition.list.nix }
-    end: \]
-    endCaptures:
-      "0": { name: punctuation.definition.list.nix }
-    patterns:
-      - include: "#expression"
-  list-and-cont:
-    begin: (?=\[)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#list"
-      - include: "#expression-cont"
-
-  attrset-for-sure:
-    patterns:
-      - begin: (?=\brec\b)
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - begin: \brec\b
-            end: (?=\{)
-            beginCaptures:
-              "0": { name: keyword.other.nix }
-            patterns:
-              - include: "#others"
-          - include: "#attrset-definition"
-          - include: "#others"
-      - begin: (?=\{\s*(\}|[^,?]*(=|;)))
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#attrset-definition"
-          - include: "#others"
-
-  attrset-definition:
-    begin: (?=\{)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - begin: (\{)
-        end: (\})
-        beginCaptures: { "0": { name: punctuation.definition.attrset.nix } }
-        endCaptures: { "0": { name: punctuation.definition.attrset.nix } }
-        patterns:
-          - include: "#attrset-contents"
-      - begin: (?<=\})
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-  attrset-definition-brace-opened:
-    patterns:
-      - begin: (?<=\})
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-      - begin: (?=.?)
-        end: \}
-        endCaptures: { "0": { name: punctuation.definition.attrset.nix } }
-        patterns:
-          - include: "#attrset-contents"
-
-  attrset-contents:
-    patterns:
-      - include: "#attribute-inherit"
-      - include: "#bad-reserved"
-      - include: "#attribute-bind"
-      - include: "#others"
-
-  function-header-open-brace:
-    begin: \{
-    end: (?=\})
-    beginCaptures:
-      "0": { name: punctuation.definition.entity.function.2.nix }
-    patterns:
-      - include: "#function-contents"
-  function-header-close-brace-no-arg:
-    begin: \}
-    end: (?=\:)
-    beginCaptures:
-      "0": { name: punctuation.definition.entity.function.nix }
-    patterns:
-      - include: "#others"
-  function-header-terminal-arg:
-    begin: (?=@)
-    end: (?=\:)
-    patterns:
-      - begin: \@
-        end: (?=\:)
-        patterns:
-          - begin: (\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*)
-            end: (?=\:)
-            name: variable.parameter.function.3.nix
-          - include: "#others"
-      - include: "#others"
-  function-header-close-brace-with-arg:
-    begin: \}
-    end: (?=\:)
-    beginCaptures:
-      "0": { name: punctuation.definition.entity.function.nix }
-    patterns:
-      - include: "#function-header-terminal-arg"
-      - include: "#others"
-  function-header-until-colon-no-arg:
-    begin: (?=\{)
-    end: (?=\:)
-    patterns:
-      - include: "#function-header-open-brace"
-      - include: "#function-header-close-brace-no-arg"
-  function-header-until-colon-with-arg:
-    begin: (?=\{)
-    end: (?=\:)
-    patterns:
-      - include: "#function-header-open-brace"
-      - include: "#function-header-close-brace-with-arg"
-  function-body-from-colon:
-    begin: (\:)
-    end: (?=([\])};,]|\b(else|then)\b))
-    beginCaptures:
-      "0": { name: punctuation.definition.function.nix }
-    patterns:
-      - include: "#expression"
-  function-definition:
-    begin: (?=.?)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#function-body-from-colon"
-      # Chained expressions for [arg@]{a,b,c?xxx}[@arg]:yyy
-      - begin: (?=.?)
-        end: (?=\:)
-        patterns:
-          # arg @ { ...
-          - begin: (\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*)
-            end: (?=\:)
-            beginCaptures:
-              "0": { name: variable.parameter.function.4.nix }
-            patterns:
-              - begin: \@
-                end: (?=\:)
-                patterns:
-                  - include: "#function-header-until-colon-no-arg"
-                  - include: "#others"
-              - include: "#others"
-          # { ...
-          - begin: (?=\{)
-            end: (?=\:)
-            patterns:
-              - include: "#function-header-until-colon-with-arg"
-      - include: "#others"
-  function-definition-brace-opened:
-    begin: (?=.?)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#function-body-from-colon"
-      # Chained expressions for a,b,c?xxx}[@arg]:yyy
-      - begin: (?=.?)
-        end: (?=\:)
-        patterns:
-          - include: "#function-header-close-brace-with-arg"
-          - begin: (?=.?)
-            end: (?=\})
-            patterns:
-              - include: "#function-contents"
-      - include: "#others"
-
-  function-for-sure:
-    patterns:
-      # x: ... | {stuff}: ... | {a, b ? c, ... | arg @ {...
-      - begin: (?=(\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*\s*[:@]|\{[^}]*\}\s*:|\{[^#}"'/=]*[,\?]))
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#function-definition"
-
-  function-contents:
-    patterns:
-      - include: "#bad-reserved"
-      - include: "#function-parameter"
-      - include: "#others"
-
-  attrset-or-function:
-    begin: \{
-    beginCaptures:
-      "0": { name: punctuation.definition.attrset-or-function.nix }
-    # Note the absence of a comma here, otherwise comma-first fails
-    end: (?=([\])};]|\b(else|then)\b))
-    patterns:
-      # We have no clue what to expect so we allow both until we hit one
-      # attrset contents => treat the rest as attrset
-      - begin: (?=(\s*\}|\"|\binherit\b|\$\{|\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*(\s*\.|\s*=[^=])))
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#attrset-definition-brace-opened"
-      # function contents => treat the rest as function header
-      - begin: (?=(\.\.\.|\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*\s*[,?]))
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#function-definition-brace-opened"
-      # this line has no hints, eat the first word of the set
-      - include: "#bad-reserved"
-      - begin: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-        # Note the absence of a comma here, otherwise comma-first fails
-        end: (?=([\])};]|\b(else|then)\b))
-        # unmatched first word is likely a function call
-        beginCaptures: { "0": { name: variable.parameter.function.maybe.nix } }
-        patterns:
-          - begin: (?=\.)
-            end: (?=([\])};,]|\b(else|then)\b))
-            patterns:
-              - include: "#attrset-definition-brace-opened"
-          # Note the \s*, this matches before the end-of-expr matches except at beginning
-          - begin: \s*(\,)
-            beginCaptures: { "1": { name: keyword.operator.nix } }
-            end: (?=([\])};,]|\b(else|then)\b))
-            patterns:
-              - include: "#function-definition-brace-opened"
-          - begin: (?=\=)
-            end: (?=([\])};,]|\b(else|then)\b))
-            patterns:
-              - include: "#attribute-bind-from-equals"
-              - include: "#attrset-definition-brace-opened"
-          - begin: (?=\?)
-            end: (?=([\])};,]|\b(else|then)\b))
-            patterns:
-              - include: "#function-parameter-default"
-              - begin: \,
-                beginCaptures:
-                  "0": { name: keyword.operator.nix }
-                end: (?=([\])};,]|\b(else|then)\b))
-                patterns:
-                  - include: "#function-definition-brace-opened"
-          - include: "#others"
-      - include: "#others"
-
-  with-assert:
-    begin: (?<![\w'-])(with|assert)(?![\w'-])
-    beginCaptures:
-      "0": { name: keyword.other.nix }
-    end: \;
-    patterns:
-      - include: "#expression"
-
-  let:
-    begin: (?=\blet\b)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - begin: \blet\b
-        beginCaptures:
-          "0": { name: keyword.other.nix }
-        end: (?=([\])};,]|\b(in|else|then)\b))
-        patterns:
-          # {}, rare sugar for (rec {...;body=x;}).body
-          - begin: (?=\{)
-            end: (?=([\])};,]|\b(else|then)\b))
-            patterns:
-              - begin: \{
-                end: \}
-                patterns:
-                  - include: "#attrset-contents"
-              - begin: (^|(?<=\}))
-                end: (?=([\])};,]|\b(else|then)\b))
-                patterns:
-                  - include: "#expression-cont"
-              - include: "#others"
-          - include: "#attrset-contents"
-          - include: "#others"
-      - begin: \bin\b
-        beginCaptures:
-          "0": { name: keyword.other.nix }
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression"
-
-  if:
-    begin: (?=\bif\b)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      # We need to chop up else and then so the end condition
-      # doesn't occur prematurely
-      - begin: \bif\b
-        end: \bth(?=en\b)
-        beginCaptures: { "0": { name: keyword.other.nix } }
-        endCaptures: { "0": { name: keyword.other.nix } }
-        patterns:
-          - include: "#expression"
-      - begin: (?<=th)en\b
-        end: \bel(?=se\b)
-        beginCaptures: { "0": { name: keyword.other.nix } }
-        endCaptures: { "0": { name: keyword.other.nix } }
-        patterns:
-          - include: "#expression"
-      - begin: (?<=el)se\b
-        end: (?=([\])};,]|\b(else|then)\b))
-        endCaptures: { "0": { name: keyword.other.nix } }
-        beginCaptures: { "0": { name: keyword.other.nix } }
-        patterns:
-          - include: "#expression"
-
-  function-body:
-    begin: (@\s*([a-zA-Z\_][a-zA-Z0-9\_\'\-]*)\s*)?(\:)
-    end: (?=([\])};,]|\b(else|then)\b))
-    patterns:
-      - include: "#expression"
-
-  comment-remark:
-    match: (TODO|FIXME|BUG|\!\!\!):?
-    captures:
-      "1": { name: markup.bold.comment.nix }
-  comment:
-    patterns:
-      - name: comment.block.nix
-        begin: /\*([^*]|\*[^\/])*
-        end: \*\/
-        patterns:
-          - include: "#comment-remark"
-      - name: comment.line.number-sign.nix
-        begin: \#
-        end: $
-        patterns:
-          - include: "#comment-remark"
-
-  interpolation:
-    name: meta.embedded
-    begin: \$\{
-    beginCaptures: { "0": { name: punctuation.section.embedded.begin.nix } }
-    end: \}
-    endCaptures: { "0": { name: punctuation.section.embedded.end.nix } }
-    patterns:
-      - include: "#expression"
-
-  string-quoted:
-    name: string.quoted.double.nix
-    begin: \"
-    end: \"
-    beginCaptures:
-      { "0": { name: punctuation.definition.string.double.start.nix } }
-    endCaptures: { "0": { name: punctuation.definition.string.double.end.nix } }
-    patterns:
-      - match: \\.
-        name: constant.character.escape.nix
-      - include: "#interpolation"
-
-  string:
-    patterns:
-      - begin: (?=\'\')
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - name: string.quoted.other.nix
-            begin: \'\'
-            end: \'\'(?!\$|\'|\\.)
-            beginCaptures:
-              { "0": { name: punctuation.definition.string.other.start.nix } }
-            endCaptures:
-              { "0": { name: punctuation.definition.string.other.end.nix } }
-            patterns:
-              - name: constant.character.escape.nix
-                match: \'\'(\$|\'|\\.)
-              - include: "#interpolation"
-          - include: "#expression-cont"
-      - begin: (?=\")
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#string-quoted"
-          - include: "#expression-cont"
-      - begin: (~?[a-zA-Z0-9\.\_\-\+]*(\/[a-zA-Z0-9\.\_\-\+]+)+)
-        beginCaptures: { "0": { name: string.unquoted.path.nix } }
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-      - begin: (\<[a-zA-Z0-9\.\_\-\+]+(\/[a-zA-Z0-9\.\_\-\+]+)*\>)
-        beginCaptures: { "0": { name: string.unquoted.spath.nix } }
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-      - begin: ([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\']+)
-        beginCaptures: { "0": { name: string.unquoted.url.nix } }
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-
-  parameter-name:
-    match: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-    captures: { "0": { name: variable.parameter.name.nix } }
-
-  parameter-name-and-cont:
-    begin: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-    end: (?=([\])};,]|\b(else|then)\b))
-    beginCaptures: { "0": { name: variable.parameter.name.nix } }
-    patterns:
-      - include: "#expression-cont"
-
-  attribute-name-single:
-    match: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-    name: entity.other.attribute-name.single.nix
-
-  attribute-name:
-    # Unfortunately, no pattern ordering can be enforced. Ah well.
-    patterns:
-      - match: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-        name: entity.other.attribute-name.multipart.nix
-      - match: \.
-      - include: "#string-quoted"
-      - include: "#interpolation"
-
-  function-parameter-default:
-    begin: \?
-    beginCaptures:
-      "0": { name: keyword.operator.nix }
-    end: (?=[,}])
-    patterns:
-      - include: "#expression"
-  function-parameter:
-    patterns:
-      - begin: (\.\.\.)
-        end: (,|(?=\}))
-        name: keyword.operator.nix
-        patterns:
-          - include: "#others"
-      - begin: \b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*
-        beginCaptures:
-          "0": { name: variable.parameter.function.1.nix }
-        end: (,|(?=\}))
-        endCaptures:
-          "0": { name: keyword.operator.nix }
-        patterns:
-          - include: "#whitespace"
-          - include: "#comment"
-          - include: "#function-parameter-default"
-          - include: "#expression"
-      - include: "#others"
-
-  attribute-inherit:
-    begin: \binherit\b
-    beginCaptures: { "0": { name: keyword.other.inherit.nix } }
-    end: \;
-    endCaptures: { "0": { name: punctuation.terminator.inherit.nix } }
-    patterns:
-      # This should only match once, in front. Ah well.
-      - begin: \(
-        end: (?=\;)
-        beginCaptures:
-          { "0": { name: punctuation.section.function.arguments.nix } }
-        patterns:
-          - begin: \)
-            end: (?=\;)
-            beginCaptures:
-              { "0": { name: punctuation.section.function.arguments.nix } }
-            patterns:
-              - include: "#bad-reserved"
-              - include: "#attribute-name-single"
-              - include: "#others"
-          - include: "#expression"
-      - begin: (?=[a-zA-Z\_])
-        end: (?=\;)
-        patterns:
-          - include: "#bad-reserved"
-          - include: "#attribute-name-single"
-          - include: "#others"
-      - include: "#others"
-
-  attribute-bind-from-equals:
-    begin: \=
-    beginCaptures:
-      "0": { name: keyword.operator.bind.nix }
-    end: \;
-    endCaptures:
-      "0": { name: punctuation.terminator.bind.nix }
-    patterns:
-      - include: "#expression"
-  attribute-bind:
-    patterns:
-      - include: "#attribute-name"
-      # Wish this could match only after an attribute. Ah well.
-      - include: "#attribute-bind-from-equals"
-
-  operator-unary:
-    name: keyword.operator.unary.nix
-    match: (!|-)
-
-  constants:
-    patterns:
-      - begin: \b(builtins|true|false|null)\b
-        end: (?=([\])};,]|\b(else|then)\b))
-        beginCaptures:
-          "0": { name: constant.language.nix }
-        patterns:
-          - include: "#expression-cont"
-      - beginCaptures: { "0": { name: support.function.nix } }
-        begin: \b(scopedImport|import|isNull|abort|throw|baseNameOf|dirOf|removeAttrs|map|toString|derivationStrict|derivation)\b
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-      - beginCaptures: { "0": { name: constant.numeric.nix } }
-        begin: \b[0-9]+\b
-        end: (?=([\])};,]|\b(else|then)\b))
-        patterns:
-          - include: "#expression-cont"
-
-  whitespace:
-    match: \s+
-
-  illegal:
-    match: .
-    name: invalid.illegal
-
-  others:
-    patterns:
-      - include: "#whitespace"
-      - include: "#comment"
-      - include: "#illegal"
-
-  bad-reserved:
-    # we don't mark "or" because it's a special case
-    match: (?<![\w'-])(if|then|else|assert|with|let|in|rec|inherit)(?![\w'-])
-    name: invalid.illegal.reserved.nix
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>name</key>
+    <string>Nix</string>
+    <key>scopeName</key>
+    <string>source.nix</string>
+    <key>fileTypes</key>
+    <array>
+      <string>nix</string>
+    </array>
+    <key>uuid</key>
+    <string>0514fd5f-acb6-436d-b42c-7643e6d36c8f</string>
+    <key>patterns</key>
+    <array>
+      <dict>
+        <key>include</key>
+        <string>#expression</string>
+      </dict>
+    </array>
+    <key>repository</key>
+    <dict>
+      <key>expression</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#parens-and-cont</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#list-and-cont</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#string</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#interpolation</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#with-assert</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#function-for-sure</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attrset-for-sure</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attrset-or-function</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#let</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#if</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#operator-unary</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#constants</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#bad-reserved</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#parameter-name-and-cont</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>expression-cont</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=.?)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#parens</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#list</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#string</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#interpolation</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#function-for-sure</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attrset-for-sure</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attrset-or-function</string>
+          </dict>
+          <dict>
+            <key>name</key>
+            <string>keyword.operator.nix</string>
+            <key>match</key>
+            <string>(\bor\b|\.|==|!=|!|\&lt;\=|\&lt;|\&gt;\=|\&gt;|&&|\|\||-\&gt;|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#constants</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#bad-reserved</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#parameter-name</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>parens</key>
+      <dict>
+        <key>begin</key>
+        <string>\(</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.expression.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\)</string>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.expression.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>parens-and-cont</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\()</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#parens</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#expression-cont</string>
+          </dict>
+        </array>
+      </dict>
+      <key>list</key>
+      <dict>
+        <key>begin</key>
+        <string>\[</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.list.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\]</string>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.list.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>list-and-cont</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\[)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#list</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#expression-cont</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attrset-for-sure</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(?=\brec\b)</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>\brec\b</string>
+                <key>end</key>
+                <string>(?=\{)</string>
+                <key>beginCaptures</key>
+                <dict>
+                  <key>0</key>
+                  <dict>
+                    <key>name</key>
+                    <string>keyword.other.nix</string>
+                  </dict>
+                </dict>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#others</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#attrset-definition</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=\{\s*(\}|[^,?]*(=|;)))</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#attrset-definition</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>attrset-definition</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\{)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(\{)</string>
+            <key>end</key>
+            <string>(\})</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>punctuation.definition.attrset.nix</string>
+              </dict>
+            </dict>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>punctuation.definition.attrset.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#attrset-contents</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?&lt;=\})</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>attrset-definition-brace-opened</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(?&lt;=\})</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=.?)</string>
+            <key>end</key>
+            <string>\}</string>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>punctuation.definition.attrset.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#attrset-contents</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>attrset-contents</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#attribute-inherit</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#bad-reserved</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attribute-bind</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-open-brace</key>
+      <dict>
+        <key>begin</key>
+        <string>\{</string>
+        <key>end</key>
+        <string>(?=\})</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.entity.function.2.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-contents</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-close-brace-no-arg</key>
+      <dict>
+        <key>begin</key>
+        <string>\}</string>
+        <key>end</key>
+        <string>(?=\:)</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.entity.function.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-terminal-arg</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=@)</string>
+        <key>end</key>
+        <string>(?=\:)</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>\@</string>
+            <key>end</key>
+            <string>(?=\:)</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>(\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*)</string>
+                <key>end</key>
+                <string>(?=\:)</string>
+                <key>name</key>
+                <string>variable.parameter.function.3.nix</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-close-brace-with-arg</key>
+      <dict>
+        <key>begin</key>
+        <string>\}</string>
+        <key>end</key>
+        <string>(?=\:)</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.entity.function.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-header-terminal-arg</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-until-colon-no-arg</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\{)</string>
+        <key>end</key>
+        <string>(?=\:)</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-header-open-brace</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#function-header-close-brace-no-arg</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-header-until-colon-with-arg</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\{)</string>
+        <key>end</key>
+        <string>(?=\:)</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-header-open-brace</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#function-header-close-brace-with-arg</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-body-from-colon</key>
+      <dict>
+        <key>begin</key>
+        <string>(\:)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.function.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-definition</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=.?)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-body-from-colon</string>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=.?)</string>
+            <key>end</key>
+            <string>(?=\:)</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>(\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*)</string>
+                <key>end</key>
+                <string>(?=\:)</string>
+                <key>beginCaptures</key>
+                <dict>
+                  <key>0</key>
+                  <dict>
+                    <key>name</key>
+                    <string>variable.parameter.function.4.nix</string>
+                  </dict>
+                </dict>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>begin</key>
+                    <string>\@</string>
+                    <key>end</key>
+                    <string>(?=\:)</string>
+                    <key>patterns</key>
+                    <array>
+                      <dict>
+                        <key>include</key>
+                        <string>#function-header-until-colon-no-arg</string>
+                      </dict>
+                      <dict>
+                        <key>include</key>
+                        <string>#others</string>
+                      </dict>
+                    </array>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#others</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>begin</key>
+                <string>(?=\{)</string>
+                <key>end</key>
+                <string>(?=\:)</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#function-header-until-colon-with-arg</string>
+                  </dict>
+                </array>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-definition-brace-opened</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=.?)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#function-body-from-colon</string>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=.?)</string>
+            <key>end</key>
+            <string>(?=\:)</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#function-header-close-brace-with-arg</string>
+              </dict>
+              <dict>
+                <key>begin</key>
+                <string>(?=.?)</string>
+                <key>end</key>
+                <string>(?=\})</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#function-contents</string>
+                  </dict>
+                </array>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-for-sure</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(?=(\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*\s*[:@]|\{[^}]*\}\s*:|\{[^#}"'/=]*[,\?]))</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#function-definition</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>function-contents</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#bad-reserved</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#function-parameter</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attrset-or-function</key>
+      <dict>
+        <key>begin</key>
+        <string>\{</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.attrset-or-function.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>(?=([\])};]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(?=(\s*\}|\"|\binherit\b|\$\{|\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*(\s*\.|\s*=[^=])))</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#attrset-definition-brace-opened</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=(\.\.\.|\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*\s*[,?]))</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#function-definition-brace-opened</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#bad-reserved</string>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+            <key>end</key>
+            <string>(?=([\])};]|\b(else|then)\b))</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>variable.parameter.function.maybe.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>(?=\.)</string>
+                <key>end</key>
+                <string>(?=([\])};,]|\b(else|then)\b))</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#attrset-definition-brace-opened</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>begin</key>
+                <string>\s*(\,)</string>
+                <key>beginCaptures</key>
+                <dict>
+                  <key>1</key>
+                  <dict>
+                    <key>name</key>
+                    <string>keyword.operator.nix</string>
+                  </dict>
+                </dict>
+                <key>end</key>
+                <string>(?=([\])};,]|\b(else|then)\b))</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#function-definition-brace-opened</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>begin</key>
+                <string>(?=\=)</string>
+                <key>end</key>
+                <string>(?=([\])};,]|\b(else|then)\b))</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#attribute-bind-from-equals</string>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#attrset-definition-brace-opened</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>begin</key>
+                <string>(?=\?)</string>
+                <key>end</key>
+                <string>(?=([\])};,]|\b(else|then)\b))</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#function-parameter-default</string>
+                  </dict>
+                  <dict>
+                    <key>begin</key>
+                    <string>\,</string>
+                    <key>beginCaptures</key>
+                    <dict>
+                      <key>0</key>
+                      <dict>
+                        <key>name</key>
+                        <string>keyword.operator.nix</string>
+                      </dict>
+                    </dict>
+                    <key>end</key>
+                    <string>(?=([\])};,]|\b(else|then)\b))</string>
+                    <key>patterns</key>
+                    <array>
+                      <dict>
+                        <key>include</key>
+                        <string>#function-definition-brace-opened</string>
+                      </dict>
+                    </array>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>with-assert</key>
+      <dict>
+        <key>begin</key>
+        <string>(?&lt;![\w'-])(with|assert)(?![\w'-])</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>keyword.other.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\;</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>let</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\blet\b)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>\blet\b</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(in|else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>(?=\{)</string>
+                <key>end</key>
+                <string>(?=([\])};,]|\b(else|then)\b))</string>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>begin</key>
+                    <string>\{</string>
+                    <key>end</key>
+                    <string>\}</string>
+                    <key>patterns</key>
+                    <array>
+                      <dict>
+                        <key>include</key>
+                        <string>#attrset-contents</string>
+                      </dict>
+                    </array>
+                  </dict>
+                  <dict>
+                    <key>begin</key>
+                    <string>(^|(?&lt;=\}))</string>
+                    <key>end</key>
+                    <string>(?=([\])};,]|\b(else|then)\b))</string>
+                    <key>patterns</key>
+                    <array>
+                      <dict>
+                        <key>include</key>
+                        <string>#expression-cont</string>
+                      </dict>
+                    </array>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#others</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#attrset-contents</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>\bin\b</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>if</key>
+      <dict>
+        <key>begin</key>
+        <string>(?=\bif\b)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>\bif\b</string>
+            <key>end</key>
+            <string>\bth(?=en\b)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?&lt;=th)en\b</string>
+            <key>end</key>
+            <string>\bel(?=se\b)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?&lt;=el)se\b</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.other.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>function-body</key>
+      <dict>
+        <key>begin</key>
+        <string>(@\s*([a-zA-Z\_][a-zA-Z0-9\_\'\-]*)\s*)?(\:)</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>comment-remark</key>
+      <dict>
+        <key>match</key>
+        <string>(TODO|FIXME|BUG|\!\!\!):?</string>
+        <key>captures</key>
+        <dict>
+          <key>1</key>
+          <dict>
+            <key>name</key>
+            <string>markup.bold.comment.nix</string>
+          </dict>
+        </dict>
+      </dict>
+      <key>comment</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>name</key>
+            <string>comment.block.nix</string>
+            <key>begin</key>
+            <string>/\*([^*]|\*[^\/])*</string>
+            <key>end</key>
+            <string>\*\/</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#comment-remark</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>name</key>
+            <string>comment.line.number-sign.nix</string>
+            <key>begin</key>
+            <string>\#</string>
+            <key>end</key>
+            <string>$</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#comment-remark</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>interpolation</key>
+      <dict>
+        <key>name</key>
+        <string>meta.embedded</string>
+        <key>begin</key>
+        <string>\$\{</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.section.embedded.begin.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\}</string>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.section.embedded.end.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>string-quoted</key>
+      <dict>
+        <key>name</key>
+        <string>string.quoted.double.nix</string>
+        <key>begin</key>
+        <string>\"</string>
+        <key>end</key>
+        <string>\"</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.string.double.start.nix</string>
+          </dict>
+        </dict>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.definition.string.double.end.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>match</key>
+            <string>\\.</string>
+            <key>name</key>
+            <string>constant.character.escape.nix</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#interpolation</string>
+          </dict>
+        </array>
+      </dict>
+      <key>string</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(?=\'\')</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>name</key>
+                <string>string.quoted.other.nix</string>
+                <key>begin</key>
+                <string>\'\'</string>
+                <key>end</key>
+                <string>\'\'(?!\$|\'|\\.)</string>
+                <key>beginCaptures</key>
+                <dict>
+                  <key>0</key>
+                  <dict>
+                    <key>name</key>
+                    <string>punctuation.definition.string.other.start.nix</string>
+                  </dict>
+                </dict>
+                <key>endCaptures</key>
+                <dict>
+                  <key>0</key>
+                  <dict>
+                    <key>name</key>
+                    <string>punctuation.definition.string.other.end.nix</string>
+                  </dict>
+                </dict>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>name</key>
+                    <string>constant.character.escape.nix</string>
+                    <key>match</key>
+                    <string>\'\'(\$|\'|\\.)</string>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#interpolation</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=\")</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#string-quoted</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(~?[a-zA-Z0-9\.\_\-\+]*(\/[a-zA-Z0-9\.\_\-\+]+)+)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>string.unquoted.path.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(\&lt;[a-zA-Z0-9\.\_\-\+]+(\/[a-zA-Z0-9\.\_\-\+]+)*\&gt;)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>string.unquoted.spath.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\']+)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>string.unquoted.url.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>parameter-name</key>
+      <dict>
+        <key>match</key>
+        <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+        <key>captures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>variable.parameter.name.nix</string>
+          </dict>
+        </dict>
+      </dict>
+      <key>parameter-name-and-cont</key>
+      <dict>
+        <key>begin</key>
+        <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+        <key>end</key>
+        <string>(?=([\])};,]|\b(else|then)\b))</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>variable.parameter.name.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression-cont</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attribute-name-single</key>
+      <dict>
+        <key>match</key>
+        <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+        <key>name</key>
+        <string>entity.other.attribute-name.single.nix</string>
+      </dict>
+      <key>attribute-name</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>match</key>
+            <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+            <key>name</key>
+            <string>entity.other.attribute-name.multipart.nix</string>
+          </dict>
+          <dict>
+            <key>match</key>
+            <string>\.</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#string-quoted</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#interpolation</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-parameter-default</key>
+      <dict>
+        <key>begin</key>
+        <string>\?</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>keyword.operator.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>(?=[,}])</string>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>function-parameter</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>(\.\.\.)</string>
+            <key>end</key>
+            <string>(,|(?=\}))</string>
+            <key>name</key>
+            <string>keyword.operator.nix</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>\b[a-zA-Z\_][a-zA-Z0-9\_\'\-]*</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>variable.parameter.function.1.nix</string>
+              </dict>
+            </dict>
+            <key>end</key>
+            <string>(,|(?=\}))</string>
+            <key>endCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>keyword.operator.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#whitespace</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#comment</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#function-parameter-default</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attribute-inherit</key>
+      <dict>
+        <key>begin</key>
+        <string>\binherit\b</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>keyword.other.inherit.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\;</string>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.terminator.inherit.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>\(</string>
+            <key>end</key>
+            <string>(?=\;)</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>punctuation.section.function.arguments.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>begin</key>
+                <string>\)</string>
+                <key>end</key>
+                <string>(?=\;)</string>
+                <key>beginCaptures</key>
+                <dict>
+                  <key>0</key>
+                  <dict>
+                    <key>name</key>
+                    <string>punctuation.section.function.arguments.nix</string>
+                  </dict>
+                </dict>
+                <key>patterns</key>
+                <array>
+                  <dict>
+                    <key>include</key>
+                    <string>#bad-reserved</string>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#attribute-name-single</string>
+                  </dict>
+                  <dict>
+                    <key>include</key>
+                    <string>#others</string>
+                  </dict>
+                </array>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#expression</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>begin</key>
+            <string>(?=[a-zA-Z\_])</string>
+            <key>end</key>
+            <string>(?=\;)</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#bad-reserved</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#attribute-name-single</string>
+              </dict>
+              <dict>
+                <key>include</key>
+                <string>#others</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#others</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attribute-bind-from-equals</key>
+      <dict>
+        <key>begin</key>
+        <string>\=</string>
+        <key>beginCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>keyword.operator.bind.nix</string>
+          </dict>
+        </dict>
+        <key>end</key>
+        <string>\;</string>
+        <key>endCaptures</key>
+        <dict>
+          <key>0</key>
+          <dict>
+            <key>name</key>
+            <string>punctuation.terminator.bind.nix</string>
+          </dict>
+        </dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#expression</string>
+          </dict>
+        </array>
+      </dict>
+      <key>attribute-bind</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#attribute-name</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#attribute-bind-from-equals</string>
+          </dict>
+        </array>
+      </dict>
+      <key>operator-unary</key>
+      <dict>
+        <key>name</key>
+        <string>keyword.operator.unary.nix</string>
+        <key>match</key>
+        <string>(!|-)</string>
+      </dict>
+      <key>constants</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>begin</key>
+            <string>\b(builtins|true|false|null)\b</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>constant.language.nix</string>
+              </dict>
+            </dict>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>support.function.nix</string>
+              </dict>
+            </dict>
+            <key>begin</key>
+            <string>\b(scopedImport|import|isNull|abort|throw|baseNameOf|dirOf|removeAttrs|map|toString|derivationStrict|derivation)\b</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+          <dict>
+            <key>beginCaptures</key>
+            <dict>
+              <key>0</key>
+              <dict>
+                <key>name</key>
+                <string>constant.numeric.nix</string>
+              </dict>
+            </dict>
+            <key>begin</key>
+            <string>\b[0-9]+\b</string>
+            <key>end</key>
+            <string>(?=([\])};,]|\b(else|then)\b))</string>
+            <key>patterns</key>
+            <array>
+              <dict>
+                <key>include</key>
+                <string>#expression-cont</string>
+              </dict>
+            </array>
+          </dict>
+        </array>
+      </dict>
+      <key>whitespace</key>
+      <dict>
+        <key>match</key>
+        <string>\s+</string>
+      </dict>
+      <key>illegal</key>
+      <dict>
+        <key>match</key>
+        <string>.</string>
+        <key>name</key>
+        <string>invalid.illegal</string>
+      </dict>
+      <key>others</key>
+      <dict>
+        <key>patterns</key>
+        <array>
+          <dict>
+            <key>include</key>
+            <string>#whitespace</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#comment</string>
+          </dict>
+          <dict>
+            <key>include</key>
+            <string>#illegal</string>
+          </dict>
+        </array>
+      </dict>
+      <key>bad-reserved</key>
+      <dict>
+        <key>match</key>
+        <string>(?&lt;![\w'-])(if|then|else|assert|with|let|in|rec|inherit)(?![\w'-])</string>
+        <key>name</key>
+        <string>invalid.illegal.reserved.nix</string>
+      </dict>
+    </dict>
+  </dict>
+</plist>
