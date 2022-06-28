@@ -73,7 +73,7 @@ repository:
       - include: "#attrset-for-sure"
       - include: "#attrset-or-function"
       - name: keyword.operator.nix
-        match: (\bor\b|\.|==|!=|!|\<\=|\<|\>\=|\>|&&|\|\||-\>|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)
+        match: (\bor\b|\.|==|!=|!|\<\=|\<|\>\=|\>|&#38;&#38;|\|\||-\>|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)
       - include: "#constants"
       - include: "#bad-reserved"
       - include: "#parameter-name"
@@ -467,7 +467,7 @@ repository:
         end: (?=([\])};,]|\b(else|then)\b))
         patterns:
           - include: "#expression-cont"
-      - begin: ([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\']+)
+      - begin: ([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&#38;\=\+\$\,\-\_\.\!\~\*\']+)
         beginCaptures: { "0": { name: string.unquoted.url.nix } }
         end: (?=([\])};,]|\b(else|then)\b))
         patterns:
