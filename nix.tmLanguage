@@ -127,7 +127,7 @@
             <key>name</key>
             <string>keyword.operator.nix</string>
             <key>match</key>
-            <string>(\bor\b|\.|==|!=|!|\&lt;\=|\&lt;|\&gt;\=|\&gt;|&&|\|\||-\&gt;|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)</string>
+            <string>(\bor\b|\.|==|!=|!|\&lt;\=|\&lt;|\&gt;\=|\&gt;|&#38;&#38;|\|\||-\&gt;|//|\?|\+\+|-|\*|/(?=([^*]|$))|\+)</string>
           </dict>
           <dict>
             <key>include</key>
@@ -1360,7 +1360,7 @@
           </dict>
           <dict>
             <key>begin</key>
-            <string>([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\']+)</string>
+            <string>([a-zA-Z][a-zA-Z0-9\+\-\.]*\:[a-zA-Z0-9\%\/\?\:\@\&#38;\=\+\$\,\-\_\.\!\~\*\']+)</string>
             <key>beginCaptures</key>
             <dict>
               <key>0</key>
