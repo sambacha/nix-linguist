@@ -1,11 +1,12 @@
 {
   "name": "nix-linguist",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "nix language for github linguist",
   "scripts": {
     "test": "npx ajv validate -s syntax/test.tmlanguage.json -d syntax/nix.tmLanguage.json"
   },
   "type": "module",
+  "files": ["nix.tmLanguage", "nix.YAML-tmLanguage", "src/*", "syntax/*", "dist/*"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sambacha/nix-linguist.git"
@@ -16,7 +17,7 @@
     "linguist",
     "tmlanguage"
   ],
-  "author": "sam bacha",
+  "author": "sam bacha <sam@manifoldfinance.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/sambacha/nix-linguist/issues"
