@@ -38,7 +38,7 @@ This repo provide's GitHub's Linguist with a grammar file to enhance syntax high
     
     For example, the builtin function `throw` causes evaluation to stop. Entering the following expression works fine however, because we never actually ask for the part of the structure that causes the `throw`.
     
-    ```
+    ```nix
     let attrs = { a = 15; b = builtins.throw "Oh no!"; };
     in "The value of 'a' is ${toString attrs.a}"
     ```
@@ -54,7 +54,7 @@ This section describes the language constructs in Nix. It is a small language an
 
 Nix has a handful of data types which can be represented literally in source code, similar to many other languages.
 
-```
+```nix
 # numbers
 42
 1.72394
