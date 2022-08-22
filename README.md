@@ -111,6 +111,11 @@ Make sure to understand the `//`\-operator, as it is used quite a lot and is pro
 
 [Another grammar spec format is available in BNF format, here is the grammar file.](https://github.com/NixOS/nix-idea/blob/4d710f3c2a33f70e0057a35b2bab9917cffbdb57/src/main/lang/Nix.bnf)
 
+## Contributing
+
+>**Warning**
+> Do NOT move the `*.tmLanguage` files in the root of the repo, nor the ones in the `/syntax/` directory: GitHub linguist has a depedency on them
+
 
 ---
 
