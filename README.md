@@ -113,7 +113,7 @@ Make sure to understand the `//`\-operator, as it is used quite a lot and is pro
 
 ## Contributing
 
->**Warning**
+>**Warning** <br />>
 > Do NOT move the `*.tmLanguage` files in the root of the repo, nor the ones in the `/syntax/` directory: GitHub linguist has a depedency on them
 
 
