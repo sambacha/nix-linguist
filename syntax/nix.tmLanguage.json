@@ -1180,6 +1180,11 @@
       "match": ".",
       "name": "invalid.illegal"
     },
+    "operator": {
+    {
+    "match": "[!:~\\+\\-&\\|\\^=<>\\*\\/%]",
+    "name": "keyword.operator.nix"
+    },
     "others": {
       "patterns": [
         {
@@ -1190,6 +1195,9 @@
         },
         {
           "include": "#illegal"
+        },
+        {
+          "include": "#operator"
         }
       ]
     },
