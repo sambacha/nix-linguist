@@ -1,7 +1,13 @@
 # [nix-linguist](https://nixos.org/)
 
+> **Warning** <br />
+> As of July 2023, GitHub Linguist has began adopting tree-sitter based grammars. <br />
+> [The Nix Community now maintains the relevant language grammar](https://github.com/nix-community/tree-sitter-nix) <br />
+> https://github.com/github-linguist/linguist/commit/e855ef2b6f90c34074061a2e17acbe853e61b483
+
+
 > **Note** <br />
-> a GitHub Linguist Grammar for Nix
+> The _Legacy_ GitHub Linguist Grammar for Nix
 
 
 - [nix-linguist](https://nixos.org/)
